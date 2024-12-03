@@ -1,0 +1,16 @@
+galaxy_info:
+  author: Olga Konstantinova
+  description: OpenVPN server setup role
+  company: ITMO
+  license: BSD
+  min_ansible_version: 2.9
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 20.04
+  galaxy_tags:
+    - vpn
+    - openvpn
+  role_name: openvpn
+  namespace: itmo
+dependencies: []
