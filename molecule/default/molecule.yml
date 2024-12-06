@@ -7,22 +7,16 @@ dependency:
     role-file: requirements.yml
 
 driver:
-  name: vagrant
-  provider:
-    name: virtualbox
+  name: docker
 
 platforms:
   - name: instance
-    box: ubuntu/focal64
-    provider_raw_config_args:
-      - "customize ['modifyvm', :id, '--uartmode1', 'disconnected']"
-      - "customize ['modifyvm', :id, '--uart1', '0x3F8', '4']"
-      - "customize ['modifyvm', :id, '--cableconnected1', 'on']"
+    image: geerlingguy/docker-ubuntu2004-ansible
+    privileged: true
+    pre_build_image: true
 
 provisioner:
   name: ansible
-  playbooks:
-      cleanup: cleanup.yml
 
 verifier:
   name: ansible

@@ -2,11 +2,16 @@
 - name: Update apt cache
   apt:
     update_cache: yes
+  become: yes
+  changed_when: false
 
 - name: Install OpenVPN and Easy-RSA
   apt:
-    name: "{{ openvpn_packages }}"
+    name:
+      - openvpn
+      - easy-rsa
     state: present
+  become: yes
 
 - name: Ensure Easy-RSA directory exists
   block:
@@ -41,39 +46,29 @@
         path: "{{ easy_rsa_pki_path }}/ca.crt"
       register: ca_cert
 
-    - name: Check if server certificate already exists
-      stat:
-        path: "{{ easy_rsa_pki_path }}/issued/server.crt"
-      register: server_cert
+    - name: Build CA without password and common name
+      shell: echo "MyOpenVPN_CA" | ./easyrsa build-ca nopass
+      args:
+        chdir: "{{ easy_rsa_path }}"
+      become: yes
+      when: not ca_cert.stat.exists
 
     - name: Check if server key already exists
       stat:
         path: "{{ easy_rsa_pki_path }}/private/server.key"
       register: server_key
 
-    - name: Check if Diffie-Hellman parameters already exist
-      stat:
-        path: "{{ easy_rsa_pki_path }}/dh.pem"
-      register: dh_params
-
-    - name: Check if TLS key already exists
-      stat:
-        path: "{{ easy_rsa_pki_path }}/ta.key"
-      register: tls_key
-
-    - name: Build CA without password and common name
-      shell: echo "MyOpenVPN_CA" | ./easyrsa build-ca nopass
-      args:
-        chdir: "{{  easy_rsa_path  }}"
-      become: yes
-      when: not ca_cert.stat.exists
-
     - name: Generate server request without password
       shell: echo "MyOpenVPN_Server" | ./easyrsa gen-req server nopass
       args:
         chdir: "{{ easy_rsa_path }}"
       become: yes
-      when: not server_cert.stat.exists
+      when: not server_key.stat.exists
+
+    - name: Check if server certificate already exists
+      stat:
+        path: "{{ easy_rsa_pki_path }}/issued/server.crt"
+      register: server_cert
 
     - name: Request sign for server certificate
       shell: echo "yes" | ./easyrsa sign-req server server
@@ -82,12 +77,22 @@
       become: yes
       when: not server_cert.stat.exists
 
+    - name: Check if Diffie-Hellman parameters already exist
+      stat:
+        path: "{{ easy_rsa_pki_path }}/dh.pem"
+      register: dh_params
+
     - name: Generate Diffie-Hellman parameters
       command: ./easyrsa gen-dh
       args:
         chdir: "{{ easy_rsa_path }}"
       become: yes
       when: not dh_params.stat.exists
+
+    - name: Check if TLS key already exists
+      stat:
+        path: "{{ easy_rsa_pki_path }}/ta.key"
+      register: tls_key
 
     - name: Generate TLS key
       command: openvpn --genkey --secret pki/ta.key
@@ -101,30 +106,47 @@
     path: /etc/openvpn
     state: directory
     mode: '0755'
+  become: yes
 
 - name: Copy required files to OpenVPN directory
   copy:
-    src: "{{ item }}"
-    dest: "{{ openvpn_config_path }}/"
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
     remote_src: yes
-  with_items: 
-    - "{{ easy_rsa_pki_path }}/ca.crt"
-    - "{{ easy_rsa_pki_path }}/issued/server.crt"
-    - "{{ easy_rsa_pki_path }}/private/server.key"
-    - "{{ easy_rsa_pki_path }}/dh.pem"
-    - "{{ easy_rsa_pki_path }}/ta.key"
+    force: no
+  with_items:
+    - { src: "{{ easy_rsa_pki_path }}/ca.crt", dest: "{{ openvpn_config_path }}/ca.crt" }
+    - { src: "{{ easy_rsa_pki_path }}/issued/server.crt", dest: "{{ openvpn_config_path }}/server.crt" }
+    - { src: "{{ easy_rsa_pki_path }}/private/server.key", dest: "{{ openvpn_config_path }}/server.key" }
+    - { src: "{{ easy_rsa_pki_path }}/dh.pem", dest: "{{ openvpn_config_path }}/dh.pem" }
+    - { src: "{{ easy_rsa_pki_path }}/ta.key", dest: "{{ openvpn_config_path }}/ta.key" }
+  become: yes
 
 - name: Apply OpenVPN server configuration
   template:
     src: server.conf.j2
     dest: /etc/openvpn/server.conf
+  become: yes
 
-- name: Start OpenVPN server
-  systemd:
-    name: openvpn@server
-    state: started
-    enabled: yes
-    
+#- name: Start OpenVPN server
+#  systemd:
+#    name: openvpn@server
+#    state: started
+#    enabled: yes
+
+- name: Check if OpenVPN is running
+  shell: pgrep -f "openvpn --config /etc/openvpn/server.conf"
+  register: openvpn_process
+  ignore_errors: true
+  changed_when: false
+
+- name: Start OpenVPN server manually
+  command: openvpn --config /etc/openvpn/server.conf
+  async: 30
+  poll: 0
+  become: yes
+  when: openvpn_process.rc != 0
+
 - name: Create client configuration file
   template:
     src: client.ovpn.j2

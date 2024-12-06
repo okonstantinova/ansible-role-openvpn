@@ -3,10 +3,6 @@
   hosts: all
   become: yes
   gather_facts: true
-  tasks:
-    - name: Test
-      ansible.builtin.debug:
-        msg: "This is the effective test"
   
   roles:
     - openvpn
