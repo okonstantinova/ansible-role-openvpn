@@ -7,9 +7,7 @@
 
 - name: Install OpenVPN and Easy-RSA
   apt:
-    name:
-      - openvpn
-      - easy-rsa
+    name: "{{ openvpn_packages }}"
     state: present
   become: yes
 

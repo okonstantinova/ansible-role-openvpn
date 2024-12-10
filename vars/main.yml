@@ -1,4 +1,5 @@
 ---
+openvpn_server_ip: "192.168.0.101"
 openvpn_port: 1194
 openvpn_proto: udp
 openvpn_dev: tun
